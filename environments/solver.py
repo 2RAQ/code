@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import copy
 from abc import abstractmethod
+import copy
 from typing import TYPE_CHECKING
 
-import numpy as np
 from absl import logging
+import numpy as np
 
 from agents.parameter import DecayByT
 
 if TYPE_CHECKING:
     from agents.parameter import DecayParameter
+    from environments.base_environment import Environment
     from environments.make_features import MakeFeatures
-    from environments.utils import Environment
 
 
 class Solver:
@@ -55,7 +55,7 @@ class TabularEnvSolver(Solver):
         super().__init__(alpha, gamma)
 
     def solve_env(self) -> None:
-        """soon"""
+        """Solves a tabular CMC with synchronous greedy value iteration"""
         logging.debug(
             f"Solving environment with {self.env.n_states} states and "
             f"{self.env.n_actions} actions."
@@ -77,7 +77,7 @@ class TabularEnvSolver(Solver):
         ] = 1
 
     def _get_update(self, s: int, a: int) -> float:
-        """soon"""
+        """Calculates the value update based on a greedy policy"""
         value_expectation = np.sum(
             self.action_values * self.env.transition_probs[:, s][:, np.newaxis], axis=0
         )
@@ -90,7 +90,7 @@ class TabularEnvSolver(Solver):
 
 
 class LFAEnvSolver(Solver):
-    """soon"""
+    """Solves CMC with linear function approximation."""
 
     def __init__(
         self,
@@ -105,7 +105,7 @@ class LFAEnvSolver(Solver):
         self.features: MakeFeatures = features
 
     def solve_env(self) -> None:
-        """soon"""
+        """Solves a tabular CMC with synchronous greedy value iteration"""
         logging.debug(
             f"Solving environment with {self.env.n_states} states and "
             f"{self.env.n_actions} actions."
@@ -127,7 +127,6 @@ class LFAEnvSolver(Solver):
         ] = 1
 
     def _update_theta(self, alpha: float, theta: np.ndarray) -> np.ndarray:
-        """soon"""
         for s, state in enumerate(self.features.features):
             for a in range(self.env.n_actions):
                 update = self._get_update(s, a, state, theta)
@@ -137,7 +136,7 @@ class LFAEnvSolver(Solver):
     def _get_update(
         self, s: int, a: int, state: np.ndarray, theta: np.ndarray
     ) -> float:
-        """soon"""
+        """Calculates the value update based on a greedy policy"""
         value_expectation = np.sum(
             (self.features.features @ theta)[:, :, 0]
             * self.env.transition_probs[a, s][:, np.newaxis],

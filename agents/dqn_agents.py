@@ -7,13 +7,18 @@ import numpy as np
 from agents.dqn_base_agent import NNAgent
 
 if TYPE_CHECKING:
+    from gym import Env
+
     from agents.configurations import EvalConfig
     from agents.parameter import DecayParameter
-    from environments.utils import ENV, Timestep
+    from environments.base_environment import Timestep
 
 
 class VanillaDQA(NNAgent):
-    """soon"""
+    """Watkins' Q-learning - C. Watkins (1989).
+
+    Attributes: Same as the ThresholdAgent base-class.
+    """
 
     def __init__(
         self,
@@ -21,11 +26,14 @@ class VanillaDQA(NNAgent):
         alpha: float,
         epsilon: DecayParameter,
         gamma: float,
-        env: ENV,
+        env: Env,
         eval_config: EvalConfig,
         max_steps: int = 1000,
         seed: int = 1234,
     ) -> None:
+        """Initialises the agent and overwrites the passed n_weights with one
+        as required for Watkins' Q-learning.
+        """
         n_weights = 1
         super().__init__(
             n_weights,
@@ -39,9 +47,9 @@ class VanillaDQA(NNAgent):
         )
 
     def _update_step(self, t: int, ts: Timestep) -> float:
-        """soon"""
+        """Watkins' Q-learning update step, returns the loss of the update."""
         q_target = self.models[0](ts.state).numpy()
-        q_update = ts.reward
+        q_update = np.array(ts.reward)
         if not ts.terminal:
             next_values = self.models[0](ts.next_state)
             q_update += self.gamma * np.max(next_values)
@@ -50,7 +58,10 @@ class VanillaDQA(NNAgent):
 
 
 class DDQAA(NNAgent):
-    """soon"""
+    """Double Q-learning - H. Hasselt (2010).
+
+    Attributes: Same as the ThresholdAgent base-class.
+    """
 
     def __init__(
         self,
@@ -58,11 +69,14 @@ class DDQAA(NNAgent):
         alpha: float,
         epsilon: DecayParameter,
         gamma: float,
-        env: ENV,
+        env: Env,
         eval_config: EvalConfig,
         max_steps: int = 1000,
         seed: int = 1234,
     ) -> None:
+        """Initialises the agent and overwrites the passed n_weights with two
+        as required for Double Q-learning.
+        """
         n_weights = 2
         super().__init__(
             n_weights,
@@ -76,10 +90,12 @@ class DDQAA(NNAgent):
         )
 
     def _update_step(self, t: int, ts: Timestep) -> float:
-        """soon"""
+        """Double Q-learning update step, randomly selects one of the two parameter
+        sets to update. Also returns the loss of the update.
+        """
         beta = self._rng.choice(self.n_weights)
         q_target = self.models[beta](ts.state).numpy()
-        q_update = ts.reward
+        q_update = np.array(ts.reward)
         if not ts.terminal:
             next_values = self.models[1 - beta](ts.next_state)
             q_update += self.gamma * np.max(next_values)
@@ -88,7 +104,10 @@ class DDQAA(NNAgent):
 
 
 class MMDQA(NNAgent):
-    """soon"""
+    """Maxmin Q-learning - Lan et al. (2020).
+
+    Attributes: Same as the ThresholdAgent base-class.
+    """
 
     def __init__(
         self,
@@ -96,7 +115,7 @@ class MMDQA(NNAgent):
         alpha: float,
         epsilon: DecayParameter,
         gamma: float,
-        env: ENV,
+        env: Env,
         eval_config: EvalConfig,
         max_steps: int = 1000,
         seed: int = 1234,
@@ -115,7 +134,10 @@ class MMDQA(NNAgent):
     def _next_state_value(
         self, state: np.ndarray, action: int, next_state: np.ndarray
     ) -> np.ndarray:
-        """soon"""
+        """Returns the maximum Q-value obtained from the set of minimum Q-values
+        as opbtained from the estimates of the N parameter sets for each action
+        at the given state.
+        """
         values = np.zeros(self.n_weights.shape)
         for i in self.n_weights:
             values[i] = self.models[i](state).numpy()[0, action]
@@ -123,10 +145,12 @@ class MMDQA(NNAgent):
         return np.max(self.models[min_weight](next_state).numpy())
 
     def _update_step(self, t: int, ts: Timestep) -> float:
-        """soon"""
+        """Maxmin Q-learning update step where one of the N parameter sets is
+        radomly chosen to update at each step. Also returns the loss of the update.
+        """
         beta = self._rng.choice(self.n_weights)
         q_target = self.models[beta](ts.state).numpy()
-        q_update = ts.reward
+        q_update = np.array(ts.reward)
         if not ts.terminal:
             q_update += self.gamma * self._next_state_value(
                 ts.state, ts.action, ts.next_state
@@ -136,7 +160,12 @@ class MMDQA(NNAgent):
 
 
 class RRADQA(NNAgent):
-    """soon"""
+    """2RA Q-learning.
+
+    Additional Attributes:
+        rho: DecayParameter - The decay parameter rho value as used in the 2RA
+            Q-learning algorithm.
+    """
 
     def __init__(
         self,
@@ -145,7 +174,7 @@ class RRADQA(NNAgent):
         epsilon: DecayParameter,
         gamma: float,
         rho: DecayParameter,
-        env: ENV,
+        env: Env,
         eval_config: EvalConfig,
         max_steps: int = 1000,
         seed: int = 1234,
@@ -163,7 +192,12 @@ class RRADQA(NNAgent):
         self.rho: DecayParameter = rho
 
     def _next_state_value(self, next_state: np.ndarray, rho: float) -> np.ndarray:
-        """soon"""
+        """Calculates the closed form estimator as described in the paper.
+
+        Returns the action corresponding to the maximum Q-value given that a
+        minimizing estimator is chosen from the ambiguity set centered around the
+        mean theta.
+        """
         self._get_eval_model()
         mean_value_prediction = self.eval_model(next_state).numpy()
         return np.max(
@@ -171,10 +205,12 @@ class RRADQA(NNAgent):
         )
 
     def _update_step(self, t: int, ts: Timestep) -> float:
-        """soon"""
+        """2RA Q-learning update step where one of the N sets of parameters is
+        radomly chosen to update at each step. Also returns the loss of the update.
+        """
         beta = self._rng.choice(self.n_weights)
         q_target = self.models[beta](ts.state).numpy()
-        q_update = ts.reward
+        q_update = np.array(ts.reward)
         if not ts.terminal:
             q_update += self.gamma * self._next_state_value(
                 ts.next_state, self.rho.decay(t)

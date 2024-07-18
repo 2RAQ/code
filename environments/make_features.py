@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from environments.base_environment import ENV
+if TYPE_CHECKING:
+    from gym import Env
+
+    from environments.gym_envs import IntegratedCartPole
 
 
 class MakeFeatures:
@@ -15,7 +19,6 @@ class MakeFeatures:
     @abstractmethod
     def make_features(self, state: int | np.ndarray) -> np.ndarray:
         """Takes a state as input and returns a feature array"""
-        pass
 
 
 class PassThrough(MakeFeatures):
@@ -58,16 +61,17 @@ class StackStateAction(MakeFeatures):
     The stacked feature vector is a vector of dimension |S|+|A| that consists of
     two stacked One-Hot vectors. One for the state and one for the action.
 
-    E.g. with |S| = 4 and |A| = 3 the state-action pair (2, 1) qould be:
+    E.g. with |S| = 4 and |A| = 3 the state-action pair (2, 1) would be:
     [0, 0, 1, 0, 0, 1, 0]
     """
 
     def __init__(self, states: int, actions: int) -> None:
-        """soon"""
         self.features: np.ndarray = self._gen_features(states, actions)
 
     def _gen_features(self, states: int, actions: int) -> np.ndarray:
-        """soon"""
+        """Constructs the feature matrix of stacked feature vectors as described
+        in the class description
+        """
         features = np.zeros((states, actions, states + actions))
         for s in range(states):
             for a in range(actions):
@@ -76,19 +80,18 @@ class StackStateAction(MakeFeatures):
         return features
 
     def make_features(self, state: int | np.ndarray) -> np.ndarray:
-        """soon"""
         return self.features[state]
 
 
 class BairdsFeatures(MakeFeatures):
-    """soon"""
+    """Creates a feature representation for Baird's example as described by
+    Weng et al. (2020)
+    """
 
     def __init__(self, states: int) -> None:
-        """soon"""
         self.features: np.ndarray = self._gen_features(states)
 
     def _gen_features(self, states: int) -> np.ndarray:
-        """soon"""
         identiy_m = np.identity(2 * states)
         features = np.zeros((states, 2, 2 * states))
         for s in range(states):
@@ -104,35 +107,34 @@ class BairdsFeatures(MakeFeatures):
         return features
 
     def make_features(self, state: int | np.ndarray) -> np.ndarray:
-        """soon"""
         return self.features[state]
 
 
 class DiscretizeCartpole(MakeFeatures):
     """Discretize the Cartpole Environment similar to Weng et al. (2020)"""
 
-    def __init__(self, env: ENV, buckets: list[int]) -> None:
-        """soon"""
+    def __init__(self, env: Env | IntegratedCartPole, buckets: list[int]) -> None:
         self.buckets: list[int] = buckets
         self.features: np.ndarray = self._gen_features()
         self.upper_bounds: np.ndarray = np.array(
             [
-                env.observation_space.high[0],
+                env.observation_space.high[0],  # type: ignore[attr-defined]
                 0.5,
-                env.observation_space.high[2],
+                env.observation_space.high[2],  # type: ignore[attr-defined]
                 np.radians(50),
             ]
         )
         self.lower_bounds: np.ndarray = -self.upper_bounds
 
     def _gen_features(self) -> np.ndarray:
-        """soon"""
+        """Creates the feature matrix for the discretized cartpole environment
+        by splittung the continuous state space into buckets.
+        """
         n_state_actions = int(np.prod(self.buckets) * 2)
         identity = np.identity(n_state_actions)
         return identity.reshape(self.buckets + [2, n_state_actions])
 
     def _discretize_state(self, state: np.ndarray) -> list[int]:
-        """soon"""
         ratios = [
             (state[i] - self.lower_bounds[i])
             / (self.upper_bounds[i] - self.lower_bounds[i])
@@ -147,7 +149,6 @@ class DiscretizeCartpole(MakeFeatures):
         return new_state
 
     def make_features(self, state: int | np.ndarray) -> np.ndarray:
-        """soon"""
         assert isinstance(
             state, np.ndarray
         ), f"State has type {type(state)}; expected state of type np.ndarray"

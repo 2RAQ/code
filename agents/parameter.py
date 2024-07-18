@@ -23,7 +23,6 @@ class DecayParameter:
 
         Should return the decayed value and set 'value' to the current value.
         """
-        pass
 
 
 class ConstantParameter(DecayParameter):
@@ -42,7 +41,9 @@ class WeightedDecayParameter(DecayParameter):
     """
 
     def __init__(self, value: float, weight: int) -> None:
-        """Inits the WeightedParameterDecay with an initial value and the decay weight."""
+        """Inits the WeightedParameterDecay with an initial value and the decay
+        weight.
+        """
         super().__init__(value)
         self.weight: int = weight
         if weight == 0:
@@ -97,7 +98,9 @@ class WengEtAl2020MaxMin(DecayParameter):
 
 
 class BasicEpsDecay(DecayParameter):
-    """A simple epsilon decay for the LunarLander experiments."""
+    """A simple epsilon decay for eps-greedy exploration used in the LunarLander
+    experiments.
+    """
 
     def __init__(self) -> None:
         super().__init__(1)

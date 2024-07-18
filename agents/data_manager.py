@@ -1,42 +1,51 @@
 from __future__ import annotations
 
+from dataclasses import (
+    dataclass,
+    field,
+)
 import os
-import pickle
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import pickle
+from typing import Any
 
+from absl import logging
 import matplotlib.pyplot as plt
 import numpy as np
-from absl import logging
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass
 class DataContainer:
-    """soon"""
+    """A container class to store data and metadata of experiments inside the
+    DataManager.
+
+    Attributes:
+        name: A string to identify the data container.
+        data: A numpy array to store the data.
+        meta_data: A dictionary to store metadata of the data container.
+    """
 
     name: str = ""
     data: np.ndarray = np.array([])
     meta_data: dict[str, Any] = field(default_factory=dict)
 
     def add_entry(self, key: str, content: Any) -> None:
-        """soon"""
         self.meta_data[key] = content
 
 
 class DataManager:
-    """soon"""
+    """A class to manage the data of experiments.
+
+    The DataManager class can be used to store experiment results and their
+    respective metadata. It allows to write the data to disk and load it back as
+    well as to generate basic visualization of the stored data.
+    """
 
     def __init__(self) -> None:
-        """soon"""
         self.raw_data: dict[str, DataContainer] = {}
 
     def add_raw_data(self, data: DataContainer) -> None:
-        """soon"""
-        if not isinstance(data, DataContainer):
+        if not isinstance(data, DataContainer):  # type: ignore[unreachable]
             raise TypeError(
                 f"Expected 'data' to be of type 'DataContainer'; "
                 f"received 'data' of type: {type(data).__name__}"
@@ -51,11 +60,10 @@ class DataManager:
         )
 
     def get_data(self, key: str) -> DataContainer:
-        """soon"""
         return self.raw_data[key]
 
     def save_data(self, path: str = "data") -> None:
-        """soon"""
+        """Pickles the data dictionary to disk"""
         filepath = Path(path)
         filepath.mkdir(parents=True, exist_ok=True)
         for name, data in self.raw_data.items():
@@ -63,7 +71,9 @@ class DataManager:
                 pickle.dump(data, file)
 
     def load_data(self, directory: str) -> None:
-        """Add method to selectively load data"""
+        """Loads pickled data, written by this class from disk into the
+        data dictionary
+        """
         for file in os.listdir(directory):
             logging.debug(f"Loading file: {file}")
             with open(f"{directory}/{file}", "rb") as f:
@@ -77,11 +87,21 @@ class DataManager:
         times_n: bool = False,
         save_fig_as: None | str = None,
     ) -> None:
-        """soon"""
+        """Plots the (asymptotic) mean squared error of the stored data.
+
+        Args:
+            range: A tuple of two integers to specify the range of steps to plot.
+            plot_data: A list of strings to specify the data containers to plot.
+            logscale: A boolean to specify if the y-axis should be logarithmic.
+            times_n: A boolean to specify if the data values should be multiplied
+                by n which results in the ASME.
+            save_fig_as: A string to specify the filename to save the figure to,
+                does not save the figure if None.
+        """
 
         if not plot_data:
             plot_data = list(self.raw_data.keys())
-        _, ax_mse = plt.subplots(1, figsize=(40, 20))
+        _, ax_mse = plt.subplots(1, figsize=(20, 10))
         if logscale:
             ax_mse.set_yscale("log")
         for data_id in plot_data:
@@ -98,12 +118,12 @@ class DataManager:
                 mse[range[0] : range[1]],
                 se[range[0] : range[1]],
                 capsize=2.5,
-                errorevery=500,
-                markevery=500,
+                errorevery=10000,
+                markevery=10000,
                 label=self._gen_label(self.raw_data[data_id].meta_data),
             )
         if times_n:
-            ax_mse.set_ylabel("nMSE")
+            ax_mse.set_ylabel("AMSE")
         else:
             ax_mse.set_ylabel("MSE")
         ax_mse.set_xlabel("Step")
@@ -115,11 +135,24 @@ class DataManager:
                 transparent="True",
                 pad_inches=0,
             )
+            plt.savefig(
+                f"{save_fig_as}.png",
+                facecolor="white",
+                bbox_inches="tight",
+                transparent="True",
+                pad_inches=0,
+            )
         plt.show()
 
     def _gen_label(self, meta_data: dict[str, Any]) -> str:
-        """soon"""
-        label = f"{meta_data['name']} with N=" f"{meta_data['thetas']}"
-        if meta_data["rho"]:
+        """Generates labels based on some predefined metadata keys"""
+        label = f"{meta_data['name']} with N={meta_data['thetas']}"
+        if "rho" in meta_data:
             label += f" & rho={meta_data['rho']}"
+        if "K" in meta_data:
+            label += f" & K={meta_data['K']}"
+        if "M" in meta_data:
+            label += f" & M={meta_data['M']}"
+        if "D" in meta_data:
+            label += f" & D={meta_data['D']}"
         return label

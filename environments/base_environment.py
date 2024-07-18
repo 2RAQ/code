@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from environments.solver import Solver
 
 EPS = np.finfo(np.float32).eps.item()
-ENV = gym.wrappers.time_limit.TimeLimit
+Env = gym.wrappers.time_limit.TimeLimit
 RNG = np.random._generator.Generator
 
 
@@ -87,42 +87,37 @@ class Environment:
         """Generates and returns a transition probability array for
         the environment.
         """
-        pass
 
     @abstractmethod
     def _gen_start_state_distribution(self) -> np.ndarray:
         """Generates and returns a starting state distribution array for
         the environment.
         """
-        pass
 
     @abstractmethod
     def copy_parameters(self, other: Environment) -> None:
         """Copies all environment defining parameters from a passed, other
         environment to self.
         """
-        pass
 
     @abstractmethod
     def reset(self) -> int:
         """Resets the dynamic parameters of the environment and returns the new,
         initial state as drawn from the starting state distribution.
         """
-        pass
 
     @abstractmethod
     def step(self, action: int) -> tuple[int, int, bool]:
         """Performs the action as passed and returns the next state, the realized
         reward, and whether or not the next state is terminal.
         """
-        pass
 
     def set_seed(self, seed: int) -> None:
         self._rng = np.random.default_rng(seed)
 
     def gen_model_sequence(self, n_models: int) -> None:
-        """Generates and stores a sequence of 'n_models' transition probability and
-        starting state distribution tuples.
+        """Generates and stores a sequence of 'n_models' transition probabilities
+        and starting state distribution tuples.
         """
         self.models = deque(
             (self._gen_transition_probs(), self._gen_start_state_distribution())

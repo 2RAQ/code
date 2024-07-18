@@ -6,7 +6,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 
-tf.config.set_visible_devices([], "GPU")
+tf.config.set_visible_devices([], "GPU")  # use CPU
 # tf.config.run_functions_eagerly(True)  # for debugging
 
 rng = np.random.default_rng(seed=1234)
@@ -17,9 +17,21 @@ seed_env = int(rng.integers(2**32))
 env.seed(seed_env)
 
 from agents.configurations import EvalConfig
-from agents.data_manager import DataContainer, DataManager
-from agents.dqn_agent_variants import DDQAA, MMDQA, RRADQA, VanillaDQA
-from agents.parameter import DecayByT, DecayByTSquared, WengEtAl2020MaxMin
+from agents.data_manager import (
+    DataContainer,
+    DataManager,
+)
+from agents.dqn_agents import (
+    DDQAA,
+    MMDQA,
+    RRADQA,
+    VanillaDQA,
+)
+from agents.parameter import (
+    DecayByT,
+    DecayByTSquared,
+    WengEtAl2020MaxMin,
+)
 
 N_EXPERIMENTS: int = 100
 N_EPISODES: int = 2000
@@ -116,20 +128,20 @@ steps_rraq_rho10_n5 = None
 steps_rraq_rho10_n10 = None
 steps_rraq_rho25_n10 = None
 
-steps_q = agent_q.run_experiment(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
-steps_dq = agent_dq.run_experiment(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
-steps_mmq_n5 = agent_mmq_n5.run_experiment(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
-steps_mmq_n10 = agent_mmq_n10.run_experiment(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
-steps_rraq_rho25_n5 = agent_rraq_rho25_n5.run_experiment(
+steps_q = agent_q.run_experiments(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
+steps_dq = agent_dq.run_experiments(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
+steps_mmq_n5 = agent_mmq_n5.run_experiments(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
+steps_mmq_n10 = agent_mmq_n10.run_experiments(N_EXPERIMENTS, N_EPISODES, THRESHOLD)
+steps_rraq_rho25_n5 = agent_rraq_rho25_n5.run_experiments(
     N_EXPERIMENTS, N_EPISODES, THRESHOLD
 )
-steps_rraq_rho10_n5 = agent_rraq_rho10_n5.run_experiment(
+steps_rraq_rho10_n5 = agent_rraq_rho10_n5.run_experiments(
     N_EXPERIMENTS, N_EPISODES, THRESHOLD
 )
-steps_rraq_rho10_n10 = agent_rraq_rho10_n5.run_experiment(
+steps_rraq_rho10_n10 = agent_rraq_rho10_n5.run_experiments(
     N_EXPERIMENTS, N_EPISODES, THRESHOLD
 )
-steps_rraq_rho25_n10 = agent_rraq_rho25_n10.run_experiment(
+steps_rraq_rho25_n10 = agent_rraq_rho25_n10.run_experiments(
     N_EXPERIMENTS, N_EPISODES, THRESHOLD
 )
 
@@ -147,9 +159,6 @@ if steps_q is not None:
                 "env_seed": seed_env,
                 "n_weights": 1,
                 "alpha": ALPHA,
-                "rho": None,
-                "rho_decay_weight": None,
-                "rho_decay": None,
                 "gamma": GAMMA,
                 "n_episodes": N_EPISODES,
                 "n_experiments": N_EXPERIMENTS,
@@ -172,9 +181,6 @@ if steps_dq is not None:
                 "env_seed": seed_env,
                 "n_weights": 2,
                 "alpha": 2 * ALPHA,
-                "rho": None,
-                "rho_decay_weight": None,
-                "rho_decay": None,
                 "gamma": GAMMA,
                 "n_episodes": N_EPISODES,
                 "n_experiments": N_EXPERIMENTS,
@@ -192,14 +198,11 @@ if steps_mmq_n5 is not None:
             "mmq_n5",
             steps_mmq_n5,
             {
-                "name": "MaxMin Q-Learning",
+                "name": "Maxmin Q-Learning",
                 "environment": "LunarLanger-v2",
                 "env_seed": seed_env,
                 "n_weights": 5,
                 "alpha": 5 * ALPHA,
-                "rho": None,
-                "rho_decay_weight": None,
-                "rho_decay": None,
                 "gamma": GAMMA,
                 "n_episodes": N_EPISODES,
                 "n_experiments": N_EXPERIMENTS,
@@ -217,14 +220,11 @@ if steps_mmq_n10 is not None:
             "mmq_n10",
             steps_mmq_n10,
             {
-                "name": "MaxMin Q-Learning",
+                "name": "Maxmin Q-Learning",
                 "environment": "LunarLanger-v2",
                 "env_seed": seed_env,
                 "n_weights": 10,
                 "alpha": 10 * ALPHA,
-                "rho": None,
-                "rho_decay_weight": None,
-                "rho_decay": None,
                 "gamma": GAMMA,
                 "n_episodes": N_EPISODES,
                 "n_experiments": N_EXPERIMENTS,

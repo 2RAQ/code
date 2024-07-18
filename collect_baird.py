@@ -2,18 +2,35 @@ from __future__ import annotations
 
 from multiprocessing import Pool
 
-import numpy as np
 from absl import logging
+import numpy as np
 
-from agents.configurations import EvalConfig, ThetaConfig
-from agents.data_manager import DataContainer, DataManager
-from agents.mse_agents import LFAAsDQAAL, LFAAsMMQA, LFAAsRQA, LFAAsVanillaQA
-from agents.parameter import DecayByT, DecayByTSquared
+from agents.configurations import (
+    EvalConfig,
+    ThetaConfig,
+)
+from agents.data_manager import (
+    DataContainer,
+    DataManager,
+)
+from agents.mse_agents import (
+    LFAAsAverageQA,
+    LFAAsDQAAL,
+    LFAAsMMQA,
+    LFAAsREDQA,
+    LFAAsRQA,
+    LFAAsVanillaQA,
+    LFAAsVRQA,
+)
+from agents.parameter import (
+    DecayByT,
+    DecayByTSquared,
+)
 from environments.bairds_example import BairdsExample
 from environments.make_features import BairdsFeatures
 from environments.solver import LFAEnvSolver
 
-# On M1 Mac
+# On M Mac
 # import multiprocessing as mp
 # mp.set_start_method("fork")
 
@@ -21,14 +38,15 @@ logging.set_verbosity(logging.DEBUG)
 
 
 rng = np.random.default_rng(seed=1234)
-seed_env = int(rng.integers(2**32))
+seed_env = 1234
 
+WORKERS: int = 17
 THETA_SIZE: int = 12
 THETA_INIT_L: float = 0.0
-THETA_INIT_U: float = 0.1
+THETA_INIT_U: float = 2.0
 REWARDS_L: float = -0.05
 REWARDS_U: float = 0.05
-SAMPLES: int = 600000
+SAMPLES: int = 2000000
 EXPERIMENTS: int = 100
 REPETITIONS: int = 1
 EVAL_CONFIG: EvalConfig = EvalConfig()
@@ -180,11 +198,32 @@ agent_rraq_rho05_n20 = LFAAsRQA(
     eval_config=EVAL_CONFIG,
     seed=int(rng.integers(2**32)),
 )
-agent_rraq_rho05_n50 = LFAAsRQA(
-    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U, 50),
-    alpha=DecayByT(50 * ALPHA, weight=ALPHA_D_WEIGHT),
-    rho=DecayByTSquared(0.5, weight=RHO_D_WEIGHT),
+agent_redq = LFAAsREDQA(
+    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U, 10),
+    alpha=DecayByT(ALPHA, weight=ALPHA_D_WEIGHT),
+    g=1,
+    m=2,
     gamma=GAMMA,
+    env=env,
+    features=features,
+    eval_config=EVAL_CONFIG,
+    seed=int(rng.integers(2**32)),
+)
+agent_avq = LFAAsAverageQA(
+    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U, 1),
+    alpha=DecayByT(ALPHA, weight=ALPHA_D_WEIGHT),
+    k=10,
+    gamma=GAMMA,
+    env=env,
+    features=features,
+    eval_config=EVAL_CONFIG,
+    seed=int(rng.integers(2**32)),
+)
+agent_vrq = LFAAsVRQA(
+    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U),
+    alpha=DecayByT(ALPHA, weight=ALPHA_D_WEIGHT),
+    gamma=GAMMA,
+    d=10,
     env=env,
     features=features,
     eval_config=EVAL_CONFIG,
@@ -192,7 +231,7 @@ agent_rraq_rho05_n50 = LFAAsRQA(
 )
 
 
-with Pool(processes=15) as pool:
+with Pool(processes=WORKERS) as pool:
     q = pool.apply_async(
         agent_q.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 0)
     )
@@ -235,8 +274,14 @@ with Pool(processes=15) as pool:
     rraq_rho05_n20 = pool.apply_async(
         agent_rraq_rho05_n20.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 26)
     )
-    rraq_rho05_n50 = pool.apply_async(
-        agent_rraq_rho05_n50.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 28)
+    redq = pool.apply_async(
+        agent_redq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 28)
+    )
+    avq = pool.apply_async(
+        agent_avq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 28)
+    )
+    vrq = pool.apply_async(
+        agent_vrq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 12)
     )
 
     error_q, _ = q.get()
@@ -253,7 +298,9 @@ with Pool(processes=15) as pool:
     error_rraq_rho05_n2, _ = rraq_rho05_n2.get()
     error_rraq_rho05_n5, _ = rraq_rho05_n5.get()
     error_rraq_rho05_n20, _ = rraq_rho05_n20.get()
-    error_rraq_rho05_n50, _ = rraq_rho05_n50.get()
+    error_redq, _ = redq.get()
+    error_avq, _ = avq.get()
+    error_vrq, _ = vrq.get()
 
 
 dm = DataManager()
@@ -274,9 +321,6 @@ dm.add_raw_data(
             "alpha": ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": None,
-            "rho_decay_weight": None,
-            "rho_decay": None,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
@@ -302,9 +346,6 @@ dm.add_raw_data(
             "alpha": 2 * ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": None,
-            "rho_decay_weight": None,
-            "rho_decay": None,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
@@ -319,7 +360,7 @@ dm.add_raw_data(
         "mmq",
         error_mmq,
         {
-            "name": "MaxMin Q-Learning",
+            "name": "Maxmin Q-Learning",
             "environment": "Baird's example",
             "n_states": 6,
             "n_actions": 2,
@@ -330,9 +371,6 @@ dm.add_raw_data(
             "alpha": 10 * ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": None,
-            "rho_decay_weight": None,
-            "rho_decay": None,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
@@ -652,29 +690,80 @@ dm.add_raw_data(
 )
 dm.add_raw_data(
     DataContainer(
-        "rraq_rho05_n50",
-        error_rraq_rho05_n50,
+        "redq",
+        error_redq,
         {
-            "name": "2RA Q-Learning",
+            "name": "REDQ-Learning",
             "environment": "Baird's example",
             "n_states": 6,
             "n_actions": 2,
             "env_seed": seed_env,
             "reward_range": (REWARDS_L, REWARDS_U),
-            "thetas": 50,
+            "thetas": 10,
             "theta_init": (THETA_INIT_L, THETA_INIT_U),
-            "alpha": 50 * ALPHA,
+            "alpha": ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": 0.5,
-            "rho_decay_weight": RHO_D_WEIGHT,
-            "rho_decay": f"rho * {RHO_D_WEIGHT} / (t^2 + {RHO_D_WEIGHT})",
+            "G": 1,
+            "M": 2,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
             "n_repetitions": REPETITIONS,
             "features": "BairdsFeatures",
-            "agent_seed": agent_rraq_rho05_n50.seed,
+            "agent_seed": agent_redq.seed,
+        },
+    )
+)
+dm.add_raw_data(
+    DataContainer(
+        "avq",
+        error_avq,
+        {
+            "name": "AverageDQN Q-Learning",
+            "environment": "Baird's example",
+            "n_states": 6,
+            "n_actions": 2,
+            "env_seed": seed_env,
+            "reward_range": (REWARDS_L, REWARDS_U),
+            "thetas": 1,
+            "theta_init": (THETA_INIT_L, THETA_INIT_U),
+            "alpha": ALPHA,
+            "alpha_decay_weight": ALPHA_D_WEIGHT,
+            "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
+            "K": 10,
+            "gamma": GAMMA,
+            "n_samples": SAMPLES,
+            "n_experiments": EXPERIMENTS,
+            "n_repetitions": REPETITIONS,
+            "features": "BairdsFeatures",
+            "agent_seed": agent_avq.seed,
+        },
+    )
+)
+dm.add_raw_data(
+    DataContainer(
+        "vrq",
+        error_vrq,
+        {
+            "name": "Variance Reduced Q-Learning",
+            "environment": "Baird's example",
+            "n_states": 6,
+            "n_actions": 2,
+            "env_seed": seed_env,
+            "reward_range": (REWARDS_L, REWARDS_U),
+            "thetas": 1,
+            "theta_init": (THETA_INIT_L, THETA_INIT_U),
+            "alpha": ALPHA,
+            "alpha_decay_weight": ALPHA_D_WEIGHT,
+            "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
+            "D": 10,
+            "gamma": GAMMA,
+            "n_samples": SAMPLES,
+            "n_experiments": EXPERIMENTS,
+            "n_repetitions": REPETITIONS,
+            "features": "BairdsFeatures",
+            "agent_seed": agent_vrq.seed,
         },
     )
 )

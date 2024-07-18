@@ -2,18 +2,35 @@ from __future__ import annotations
 
 from multiprocessing import Pool
 
-import numpy as np
 from absl import logging
+import numpy as np
 
-from agents.configurations import EvalConfig, ThetaConfig
-from agents.data_manager import DataContainer, DataManager
-from agents.mse_agents import LFAAsDQAAL, LFAAsMMQA, LFAAsRQA, LFAAsVanillaQA
-from agents.parameter import DecayByT, DecayByTSquared
+from agents.configurations import (
+    EvalConfig,
+    ThetaConfig,
+)
+from agents.data_manager import (
+    DataContainer,
+    DataManager,
+)
+from agents.mse_agents import (
+    LFAAsAverageQA,
+    LFAAsDQAAL,
+    LFAAsMMQA,
+    LFAAsREDQA,
+    LFAAsRQA,
+    LFAAsVanillaQA,
+    LFAAsVRQA,
+)
+from agents.parameter import (
+    DecayByT,
+    DecayByTSquared,
+)
 from environments.make_features import MakeOneHot
 from environments.random_env import RandomEnvironment
 from environments.solver import LFAEnvSolver
 
-# On M1 Mac
+# On M Mac
 # import multiprocessing as mp
 # mp.set_start_method("fork")
 
@@ -23,6 +40,7 @@ logging.set_verbosity(logging.DEBUG)
 rng = np.random.default_rng(seed=1234)
 seed_env = int(rng.integers(2**32))
 
+WORKERS: int = 5
 THETA_SIZE: int = 30
 THETA_INIT_L: float = 0.0
 THETA_INIT_U: float = 0.0
@@ -81,9 +99,40 @@ agent_rraq_rho50_n10 = LFAAsRQA(
     eval_config=EVAL_CONFIG,
     seed=int(rng.integers(2**32)),
 )
+agent_redq = LFAAsREDQA(
+    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U, 10),
+    alpha=DecayByT(ALPHA, weight=ALPHA_D_WEIGHT),
+    gamma=GAMMA,
+    g=1,
+    m=2,
+    env=env,
+    features=features,
+    eval_config=EVAL_CONFIG,
+    seed=int(rng.integers(2**32)),
+)
+agent_avq = LFAAsAverageQA(
+    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U, 10),
+    alpha=DecayByT(ALPHA, weight=ALPHA_D_WEIGHT),
+    gamma=GAMMA,
+    k=10,
+    env=env,
+    features=features,
+    eval_config=EVAL_CONFIG,
+    seed=int(rng.integers(2**32)),
+)
+agent_vrq = LFAAsVRQA(
+    theta_config=ThetaConfig(THETA_SIZE, THETA_INIT_L, THETA_INIT_U),
+    alpha=DecayByT(ALPHA, weight=ALPHA_D_WEIGHT),
+    gamma=GAMMA,
+    d=10,
+    env=env,
+    features=features,
+    eval_config=EVAL_CONFIG,
+    seed=int(rng.integers(2**32)),
+)
 
 
-with Pool(processes=4) as pool:
+with Pool(processes=WORKERS) as pool:
     q = pool.apply_async(
         agent_q.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 0)
     )
@@ -94,13 +143,25 @@ with Pool(processes=4) as pool:
         agent_mmq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 4)
     )
     rraq_rho50_n10 = pool.apply_async(
-        agent_rraq_rho50_n10.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 18)
+        agent_rraq_rho50_n10.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 6)
+    )
+    redq = pool.apply_async(
+        agent_redq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 8)
+    )
+    avq = pool.apply_async(
+        agent_avq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 10)
+    )
+    vrq = pool.apply_async(
+        agent_vrq.run_experiments, (SAMPLES, EXPERIMENTS, REPETITIONS, 12)
     )
 
     error_q, _ = q.get()
     error_dq, _ = dq.get()
     error_mmq, _ = mmq.get()
     error_rraq_rho50_n10, _ = rraq_rho50_n10.get()
+    error_redq, _ = redq.get()
+    error_avq, _ = avq.get()
+    error_vrq, _ = vrq.get()
 
 
 dm = DataManager()
@@ -121,9 +182,6 @@ dm.add_raw_data(
             "alpha": ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": None,
-            "rho_decay_weight": None,
-            "rho_decay": None,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
@@ -149,9 +207,6 @@ dm.add_raw_data(
             "alpha": 2 * ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": None,
-            "rho_decay_weight": None,
-            "rho_decay": None,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
@@ -166,7 +221,7 @@ dm.add_raw_data(
         "mmq",
         error_mmq,
         {
-            "name": "MaxMin Q-Learning",
+            "name": "Maxmin Q-Learning",
             "environment": "Random environment",
             "n_states": 10,
             "n_actions": 3,
@@ -177,9 +232,6 @@ dm.add_raw_data(
             "alpha": 10 * ALPHA,
             "alpha_decay_weight": ALPHA_D_WEIGHT,
             "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
-            "rho": None,
-            "rho_decay_weight": None,
-            "rho_decay": None,
             "gamma": GAMMA,
             "n_samples": SAMPLES,
             "n_experiments": EXPERIMENTS,
@@ -214,6 +266,85 @@ dm.add_raw_data(
             "n_repetitions": REPETITIONS,
             "features": "MakeOneHot",
             "agent_seed": agent_rraq_rho50_n10.seed,
+        },
+    )
+)
+dm.add_raw_data(
+    DataContainer(
+        "redq",
+        error_redq,
+        {
+            "name": "REDQ-Learning",
+            "environment": "Random environment",
+            "n_states": 10,
+            "n_actions": 3,
+            "env_seed": seed_env,
+            "rewards": f"{REWARDS_Q} * s^2 - {REWARDS_P} * a^2",
+            "thetas": 10,
+            "theta_init": (THETA_INIT_L, THETA_INIT_U),
+            "alpha": 10 * ALPHA,
+            "alpha_decay_weight": ALPHA_D_WEIGHT,
+            "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
+            "G": 1,
+            "M": 2,
+            "gamma": GAMMA,
+            "n_samples": SAMPLES,
+            "n_experiments": EXPERIMENTS,
+            "n_repetitions": REPETITIONS,
+            "features": "MakeOneHot",
+            "agent_seed": agent_redq.seed,
+        },
+    )
+)
+dm.add_raw_data(
+    DataContainer(
+        "avq",
+        error_avq,
+        {
+            "name": "AverageDQN Q-Learning",
+            "environment": "Random environment",
+            "n_states": 10,
+            "n_actions": 3,
+            "env_seed": seed_env,
+            "rewards": f"{REWARDS_Q} * s^2 - {REWARDS_P} * a^2",
+            "thetas": 10,
+            "theta_init": (THETA_INIT_L, THETA_INIT_U),
+            "alpha": 10 * ALPHA,
+            "alpha_decay_weight": ALPHA_D_WEIGHT,
+            "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
+            "K": 10,
+            "gamma": GAMMA,
+            "n_samples": SAMPLES,
+            "n_experiments": EXPERIMENTS,
+            "n_repetitions": REPETITIONS,
+            "features": "MakeOneHot",
+            "agent_seed": agent_avq.seed,
+        },
+    )
+)
+dm.add_raw_data(
+    DataContainer(
+        "vrq",
+        error_vrq,
+        {
+            "name": "Variance Reduced Q-Learning",
+            "environment": "Random environment",
+            "n_states": 10,
+            "n_actions": 3,
+            "env_seed": seed_env,
+            "rewards": f"{REWARDS_Q} * s^2 - {REWARDS_P} * a^2",
+            "thetas": 1,
+            "theta_init": (THETA_INIT_L, THETA_INIT_U),
+            "alpha": 10 * ALPHA,
+            "alpha_decay_weight": ALPHA_D_WEIGHT,
+            "alpha_decay": f"alpha * {ALPHA_D_WEIGHT} / (t + {ALPHA_D_WEIGHT})",
+            "D": 10,
+            "gamma": GAMMA,
+            "n_samples": SAMPLES,
+            "n_experiments": EXPERIMENTS,
+            "n_repetitions": REPETITIONS,
+            "features": "MakeOneHot",
+            "agent_seed": agent_avq.seed,
         },
     )
 )
